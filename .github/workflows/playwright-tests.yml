@@ -15,6 +15,11 @@ jobs:
   playwright-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment: github-pages
     env:
       CI: true
 
@@ -76,3 +81,107 @@ jobs:
           EOF
           )
           curl -H "Content-Type: application/json" -d "$payload" "$TEAMS_WEBHOOK_URL"
+
+      - name: Prepare Playwright history for Pages
+        if: always() && github.ref == 'refs/heads/main'
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_SHA: ${{ github.sha }}
+          REF_NAME: ${{ github.ref_name }}
+          JOB_CONCLUSION: ${{ job.status }}
+        run: |
+          set -e
+          mkdir -p playwright-report
+          mkdir -p .tmp-gh-pages
+
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch --depth=1 origin gh-pages
+            git --work-tree=.tmp-gh-pages checkout origin/gh-pages -- history.json || true
+          fi
+
+          node - <<'NODE'
+          const fs = require('fs');
+
+          const reportHistoryPath = 'playwright-report/history.json';
+          const previousHistoryPath = '.tmp-gh-pages/history.json';
+          const lastRunPath = 'test-results/.last-run.json';
+
+          const readJson = (path, fallback) => {
+            try {
+              return JSON.parse(fs.readFileSync(path, 'utf8'));
+            } catch {
+              return fallback;
+            }
+          };
+
+          const previousHistory = readJson(previousHistoryPath, []);
+          const lastRun = readJson(lastRunPath, {});
+
+          const entry = {
+            timestamp: new Date().toISOString(),
+            runUrl: process.env.RUN_URL,
+            commitSha: process.env.COMMIT_SHA,
+            ref: process.env.REF_NAME,
+            jobConclusion: process.env.JOB_CONCLUSION,
+            status: lastRun.status ?? null,
+            failedTests: lastRun.failedTests ?? null,
+            passedTests: lastRun.passedTests ?? null,
+            skippedTests: lastRun.skippedTests ?? null,
+            totalTests: lastRun.totalTests ?? null
+          };
+
+          const merged = Array.isArray(previousHistory) ? previousHistory : [];
+          merged.push(entry);
+
+          fs.mkdirSync('playwright-report', { recursive: true });
+          fs.writeFileSync(reportHistoryPath, JSON.stringify(merged, null, 2));
+          NODE
+
+      - name: Upload Playwright report to GitHub Pages
+        if: always() && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: playwright-report/
+
+      - name: Deploy Playwright report to GitHub Pages
+        if: always() && github.ref == 'refs/heads/main'
+        uses: actions/deploy-pages@v4
+
+  security-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --immutable --immutable-cache --check-cache
+
+      - name: Run dependency vulnerability scan
+        continue-on-error: false
+        run: |
+          set +e
+          yarn audit --level high > yarn-audit.txt 2>&1
+          audit_exit=$?
+
+          echo "### Dependency Security Scan" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$audit_exit" -eq 0 ]; then
+            echo "No high or critical vulnerabilities found." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "High or critical vulnerabilities were detected." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            tail -n 50 yarn-audit.txt >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          exit "$audit_exit"
