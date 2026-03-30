@@ -5,7 +5,7 @@ export default defineConfig({
   fullyParallel: true,
   workers: 3,
   retries: 0,
-  reporter: "list",
+  reporter: [["list"], ["html"]],
   use: {
     baseURL: "https://playwright.dev",
     trace: "on-first-retry",
