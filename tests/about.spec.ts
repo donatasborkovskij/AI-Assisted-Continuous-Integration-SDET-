@@ -11,7 +11,7 @@ test.describe("About Page Tests", () => {
 
   test("should load about page with a non-empty title", async () => {
     const title = await aboutPage.getTitle();
-    expect(title).not.toBe("");
+    expect(title.trim().length).toBeGreaterThan(0);
   });
 
   test("should display a visible h1 heading on the about page", async () => {
