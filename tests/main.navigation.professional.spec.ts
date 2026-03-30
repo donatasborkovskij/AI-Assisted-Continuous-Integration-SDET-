@@ -4,9 +4,8 @@
 
 import { expect, test } from "@playwright/test";
 
-test.describe
-  .skip("DEPRECATED – replaced by main.navigation.refactored.spec.ts", () => {
+test.describe("DEPRECATED", () => {
   test("placeholder – do not add tests here", async () => {
-    expect(1).not.toBe(2);
+    expect(1).toBe(2);
   });
 });
