@@ -23,24 +23,24 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      # Set up the latest LTS version of Node.js and enable Yarn dependency caching.
+      # Set up the latest LTS version of Node.js and enable npm dependency caching.
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
-          cache: yarn
+          cache: npm
 
-      # Install dependencies using the lockfile and cache integrity checks.
+      # Install dependencies.
       - name: Install dependencies
-        run: yarn install --immutable --immutable-cache --check-cache
+        run: npm install
 
       # Install Playwright browsers and required system dependencies.
       - name: Install Playwright browsers
-        run: yarn playwright install --with-deps
+        run: npx playwright install --with-deps
 
       # Run the Playwright test suite in parallel.
       - name: Run Playwright tests
-        run: yarn playwright test
+        run: npm test
 
       # Always upload the Playwright HTML report for post-run inspection.
       - name: Upload Playwright HTML report
